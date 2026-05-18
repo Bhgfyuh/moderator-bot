@@ -28,9 +28,31 @@ def parse_time(time_str: str):
 def is_admin(user_id):
     return user_id in ADMIN_IDS
 
+# КОМАНДА HELP (Доступна всем)
+@dp.message(Command("help"))
+async def help_handler(message: Message):
+    help_text = (
+        "📜 **Справка по командам модерации:**\n\n"
+        "🔹 `/mute [время] [причина]` — Ограничить чат (ответ на сообщение).\n"
+        "   _Пример: /mute 10m спам_\n"
+        "🔹 `/unmute` — Снять ограничения (ответ на сообщение).\n"
+        "🔹 `/warn [причина]` — Выдать предупреждение (3/3 = бан).\n"
+        "   _Пример: /warn мат_\n"
+        "🔹 `/ban [причина]` — Забанить навсегда.\n"
+        "   _Пример: /ban читы_\n\n"
+        "⏳ Лимиты мута: от 30с до 365д.\n"
+        "━━━━━━━━━━━━━━━\n"
+        "🛡 **СТАРШИЙ СОСТАВ:**\n"
+        "👑 Лидер: **Никита**\n"
+        "💻 Тех. Админ: **Олег**\n"
+        "🎖 Гл. Зам: **Арлан**\n"
+        "🥈 Зам: **Ярик**"
+    )
+    await message.answer(help_text, parse_mode="Markdown")
+
 @dp.message(Command("start"))
 async def start(message: Message):
-    await message.answer("🦾 Модератор готов. Лимиты: 30с - 365д.\nКоманды: /mute, /warn, /ban, /unmute")
+    await message.answer("🦾 Модератор активен! Напиши /help, чтобы увидеть список команд и состав администрации.")
 
 @dp.message(Command("mute"))
 async def mute_handler(message: Message, command: CommandObject):
