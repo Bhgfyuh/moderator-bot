@@ -9,7 +9,8 @@ TOKEN = '8714415957:AAFEY7J5P-73GwtC9eBTOL9NgCaimwGcGrU'
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-ADMIN_IDS = [5349346619, 5919988510]
+# Обновленный список админов
+ADMIN_IDS = [5349346619, 5919988510, 5569374433]
 warns = {}
 
 def parse_time(time_str: str):
@@ -17,7 +18,7 @@ def parse_time(time_str: str):
     unit = time_str[-1].lower()
     try:
         value = int(time_str[:-1])
-        if unit == 's': return timedelta(seconds=value) # секунды
+        if unit == 's': return timedelta(seconds=value)
         if unit == 'm': return timedelta(minutes=value)
         if unit == 'h': return timedelta(hours=value)
         if unit == 'd': return timedelta(days=value)
@@ -31,7 +32,6 @@ def is_admin(user_id):
 async def start(message: Message):
     await message.answer("🦾 Модератор готов. Лимиты: 30с - 365д.\nКоманды: /mute, /warn, /ban, /unmute")
 
-# МУТ: /mute 10m спам
 @dp.message(Command("mute"))
 async def mute_handler(message: Message, command: CommandObject):
     if not is_admin(message.from_user.id): return
@@ -46,11 +46,10 @@ async def mute_handler(message: Message, command: CommandObject):
     if not duration:
         return await message.reply("⚠️ Ошибка. Пример: /mute 30s или /mute 1d")
 
-    # Проверка лимитов (30 сек - 365 дней)
     seconds = duration.total_seconds()
     if seconds < 30:
         duration = timedelta(seconds=30)
-    elif seconds > 31536000: # 365 дней в секундах
+    elif seconds > 31536000:
         duration = timedelta(days=365)
 
     until_date = datetime.now() + duration
@@ -65,7 +64,6 @@ async def mute_handler(message: Message, command: CommandObject):
     except Exception as e:
         await message.answer(f"❌ Ошибка: {e}")
 
-# ВАРН: /warn мат
 @dp.message(Command("warn"))
 async def warn_handler(message: Message, command: CommandObject):
     if not is_admin(message.from_user.id): return
@@ -86,7 +84,6 @@ async def warn_handler(message: Message, command: CommandObject):
     else:
         await message.answer(f"⚠️ {message.reply_to_message.from_user.first_name}, варн ({warns[user_id]}/3)!\n📝 Причина: {reason}")
 
-# БАН: /ban читы
 @dp.message(Command("ban"))
 async def ban_handler(message: Message, command: CommandObject):
     if not is_admin(message.from_user.id): return
@@ -100,7 +97,6 @@ async def ban_handler(message: Message, command: CommandObject):
     except Exception as e:
         await message.answer(f"❌ Ошибка: {e}")
 
-# РАЗМУТ
 @dp.message(Command("unmute"))
 async def unmute_handler(message: Message):
     if not is_admin(message.from_user.id): return
