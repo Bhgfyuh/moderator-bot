@@ -9,7 +9,7 @@ TOKEN = '8714415957:AAFEY7J5P-73GwtC9eBTOL9NgCaimwGcGrU'
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# Обновленный список админов
+# Список админов
 ADMIN_IDS = [5349346619, 5919988510, 5569374433]
 warns = {}
 
@@ -28,18 +28,15 @@ def parse_time(time_str: str):
 def is_admin(user_id):
     return user_id in ADMIN_IDS
 
-# КОМАНДА HELP (Доступна всем)
 @dp.message(Command("help"))
 async def help_handler(message: Message):
     help_text = (
         "📜 **Справка по командам модерации:**\n\n"
-        "🔹 `/mute [время] [причина]` — Ограничить чат (ответ на сообщение).\n"
-        "   _Пример: /mute 10m спам_\n"
-        "🔹 `/unmute` — Снять ограничения (ответ на сообщение).\n"
-        "🔹 `/warn [причина]` — Выдать предупреждение (3/3 = бан).\n"
-        "   _Пример: /warn мат_\n"
-        "🔹 `/ban [причина]` — Забанить навсегда.\n"
-        "   _Пример: /ban читы_\n\n"
+        "🔹 `/mute [время] [причина]` — Мут (ответ на сообщение).\n"
+        "🔹 `/unmute` — Снять мут (ответ на сообщение).\n"
+        "🔹 `/warn [причина]` — Выдать варн (3/3 = бан).\n"
+        "🔹 `/unwarn` — Снять один варн (ответ на сообщение).\n"
+        "🔹 `/ban [причина]` — Забанить навсегда.\n\n"
         "⏳ Лимиты мута: от 30с до 365д.\n"
         "━━━━━━━━━━━━━━━\n"
         "🛡 **СТАРШИЙ СОСТАВ:**\n"
@@ -52,7 +49,7 @@ async def help_handler(message: Message):
 
 @dp.message(Command("start"))
 async def start(message: Message):
-    await message.answer("🦾 Модератор активен! Напиши /help, чтобы увидеть список команд и состав администрации.")
+    await message.answer("🦾 Бот активен! Список команд: /help")
 
 @dp.message(Command("mute"))
 async def mute_handler(message: Message, command: CommandObject):
@@ -66,22 +63,15 @@ async def mute_handler(message: Message, command: CommandObject):
 
     duration = parse_time(time_arg)
     if not duration:
-        return await message.reply("⚠️ Ошибка. Пример: /mute 30s или /mute 1d")
+        return await message.reply("⚠️ Ошибка времени. Пример: /mute 10m")
 
     seconds = duration.total_seconds()
-    if seconds < 30:
-        duration = timedelta(seconds=30)
-    elif seconds > 31536000:
-        duration = timedelta(days=365)
+    if seconds < 30: duration = timedelta(seconds=30)
+    elif seconds > 31536000: duration = timedelta(days=365)
 
     until_date = datetime.now() + duration
     try:
-        await bot.restrict_chat_member(
-            message.chat.id, 
-            message.reply_to_message.from_user.id,
-            ChatPermissions(can_send_messages=False),
-            until_date=until_date
-        )
+        await bot.restrict_chat_member(message.chat.id, message.reply_to_message.from_user.id, ChatPermissions(can_send_messages=False), until_date=until_date)
         await message.answer(f"🤐 Замучен до: {until_date.strftime('%Y-%m-%d %H:%M')}\n📝 Причина: {reason}")
     except Exception as e:
         await message.answer(f"❌ Ошибка: {e}")
@@ -89,8 +79,7 @@ async def mute_handler(message: Message, command: CommandObject):
 @dp.message(Command("warn"))
 async def warn_handler(message: Message, command: CommandObject):
     if not is_admin(message.from_user.id): return
-    if not message.reply_to_message:
-        return await message.reply("⚠️ Ответь на сообщение!")
+    if not message.reply_to_message: return await message.reply("⚠️ Ответь на сообщение!")
 
     user_id = message.reply_to_message.from_user.id
     reason = command.args if command.args else "Не указана"
@@ -106,12 +95,25 @@ async def warn_handler(message: Message, command: CommandObject):
     else:
         await message.answer(f"⚠️ {message.reply_to_message.from_user.first_name}, варн ({warns[user_id]}/3)!\n📝 Причина: {reason}")
 
+# НОВАЯ КОМАНДА: СНЯТЬ ВАРН
+@dp.message(Command("unwarn"))
+async def unwarn_handler(message: Message):
+    if not is_admin(message.from_user.id): return
+    if not message.reply_to_message: return await message.reply("⚠️ Ответь на сообщение того, кому снять варн!")
+
+    user_id = message.reply_to_message.from_user.id
+    user_name = message.reply_to_message.from_user.first_name
+
+    if user_id in warns and warns[user_id] > 0:
+        warns[user_id] -= 1
+        await message.answer(f"✅ У {user_name} снят один варн. Теперь у него ({warns[user_id]}/3)")
+    else:
+        await message.answer(f"😇 У {user_name} нет варнов.")
+
 @dp.message(Command("ban"))
 async def ban_handler(message: Message, command: CommandObject):
     if not is_admin(message.from_user.id): return
-    if not message.reply_to_message:
-        return await message.reply("⚠️ Ответь на сообщение!")
-
+    if not message.reply_to_message: return await message.reply("⚠️ Ответь на сообщение!")
     reason = command.args if command.args else "Не указана"
     try:
         await bot.ban_chat_member(message.chat.id, message.reply_to_message.from_user.id)
@@ -124,11 +126,7 @@ async def unmute_handler(message: Message):
     if not is_admin(message.from_user.id): return
     if not message.reply_to_message: return
     try:
-        await bot.restrict_chat_member(
-            message.chat.id,
-            message.reply_to_message.from_user.id,
-            ChatPermissions(can_send_messages=True, can_send_media_messages=True, can_send_other_messages=True, can_add_web_page_previews=True)
-        )
+        await bot.restrict_chat_member(message.chat.id, message.reply_to_message.from_user.id, ChatPermissions(can_send_messages=True, can_send_media_messages=True, can_send_other_messages=True, can_add_web_page_previews=True))
         await message.answer("🔊 Размучен.")
     except Exception as e:
         await message.answer(f"❌ Ошибка: {e}")
