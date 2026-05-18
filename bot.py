@@ -12,6 +12,8 @@ dp = Dispatcher()
 # Список админов
 ADMIN_IDS = [5349346619, 5919988510, 5569374433]
 warns = {}
+# Хранилище времени последнего вызова /help для каждого пользователя
+help_cooldown = {}
 
 def parse_time(time_str: str):
     if not time_str: return timedelta(hours=1)
@@ -28,8 +30,31 @@ def parse_time(time_str: str):
 def is_admin(user_id):
     return user_id in ADMIN_IDS
 
+# КОМАНДА HELP с защитой от спама
 @dp.message(Command("help"))
 async def help_handler(message: Message):
+    user_id = message.from_user.id
+    now = datetime.now()
+
+    # Проверка на спам (только для обычных юзеров)
+    if not is_admin(user_id):
+        last_call = help_cooldown.get(user_id)
+        if last_call and (now - last_call).total_seconds() < 300: # 300 секунд = 5 минут
+            try:
+                until_date = now + timedelta(minutes=20)
+                await bot.restrict_chat_member(
+                    message.chat.id,
+                    user_id,
+                    ChatPermissions(can_send_messages=False),
+                    until_date=until_date
+                )
+                return await message.answer(f"🤫 {message.from_user.first_name} замучен на 20 минут за спам командой /help.")
+            except Exception as e:
+                return print(f"Ошибка мута за спам: {e}")
+        
+        # Обновляем время последнего вызова
+        help_cooldown[user_id] = now
+
     help_text = (
         "📜 **Справка по командам модерации:**\n\n"
         "🔹 `/mute [время] [причина]` — Мут (ответ на сообщение).\n"
@@ -38,6 +63,7 @@ async def help_handler(message: Message):
         "🔹 `/unwarn` — Снять один варн (ответ на сообщение).\n"
         "🔹 `/ban [причина]` — Забанить навсегда.\n\n"
         "⏳ Лимиты мута: от 30с до 365д.\n"
+        "🚫 За спам командой /help — мут 20 минут.\n"
         "━━━━━━━━━━━━━━━\n"
         "🛡 **СТАРШИЙ СОСТАВ:**\n"
         "👑 Лидер: **Никита**\n"
@@ -95,11 +121,10 @@ async def warn_handler(message: Message, command: CommandObject):
     else:
         await message.answer(f"⚠️ {message.reply_to_message.from_user.first_name}, варн ({warns[user_id]}/3)!\n📝 Причина: {reason}")
 
-# НОВАЯ КОМАНДА: СНЯТЬ ВАРН
 @dp.message(Command("unwarn"))
 async def unwarn_handler(message: Message):
     if not is_admin(message.from_user.id): return
-    if not message.reply_to_message: return await message.reply("⚠️ Ответь на сообщение того, кому снять варн!")
+    if not message.reply_to_message: return await message.reply("⚠️ Ответь на сообщение!")
 
     user_id = message.reply_to_message.from_user.id
     user_name = message.reply_to_message.from_user.first_name
