@@ -13,7 +13,7 @@ TOKEN = os.getenv('BOT_TOKEN')
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# ТВОИ АДМИНЫ
+# СПИСОК АДМИНОВ
 ADMIN_IDS = [5349346619, 5919988510, 5569374433]
 warns = {}
 chat_members = {}
@@ -25,16 +25,16 @@ def parse_time(time_str: str, min_s=1):
     if not time_str: return timedelta(hours=1)
     unit = time_str[-1].lower()
     try:
-        value = int(time_str[:-1])
-        if unit == 's': res = timedelta(seconds=value)
-        elif unit == 'm': res = timedelta(minutes=value)
-        elif unit == 'h': res = timedelta(hours=value)
-        elif unit == 'd': res = timedelta(days=value)
+        val = int(time_str[:-1])
+        if unit == 's': res = timedelta(seconds=val)
+        elif unit == 'm': res = timedelta(minutes=val)
+        elif unit == 'h': res = timedelta(hours=val)
+        elif unit == 'd': res = timedelta(days=val)
         else: res = timedelta(hours=1)
         return max(timedelta(seconds=min_s), min(res, timedelta(days=365)))
     except: return timedelta(hours=1)
 
-# ГЛАВНОЕ МЕНЮ
+# КНОПКИ
 def get_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🛡 Модерация", callback_query_data="h_mod")],
@@ -72,7 +72,7 @@ async def help_cb(call: CallbackQuery):
             "💻 **Олег** — Тех. Админ", reply_markup=back, parse_mode="Markdown")
     await call.answer()
 
-# --- ФУНКЦИИ ---
+# МОДЕРАЦИЯ
 @dp.message(Command("mute"))
 async def mute_h(message: Message, command: CommandObject):
     if not is_admin(message.from_user.id) or not message.reply_to_message: return
