@@ -7,15 +7,22 @@ from aiogram.types import Message, ChatPermissions, InlineKeyboardMarkup, Inline
 from aiogram.filters import Command, CommandObject
 from datetime import datetime, timedelta
 
+# Настройка логирования
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# Токен берем из переменных Railway
-TOKEN = os.getenv('BOT_TOKEN') 
+# Пытаемся взять токен
+TOKEN = os.getenv('BOT_TOKEN')
+
+if not TOKEN:
+    logger.error("ОШИБКА: Токен не найден в переменных Railway (BOT_TOKEN)!")
+else:
+    logger.info("Токен успешно подгружен.")
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# --- ДАННЫЕ ---
+# --- ТВОИ НАСТРОЙКИ ---
 ADMIN_IDS = [5349346619, 5919988510, 5569374433]
 warns = {}
 chat_members = {}
@@ -35,14 +42,10 @@ def parse_time(time_str: str):
         elif unit == 'h': res = timedelta(hours=value)
         elif unit == 'd': res = timedelta(days=value)
         else: res = timedelta(hours=1)
-        
-        # Лимиты для Telegram (от 30 сек до 366 дней)
-        if res < timedelta(seconds=30): return timedelta(seconds=30)
-        if res > timedelta(days=366): return timedelta(days=366)
-        return res
+        return max(timedelta(seconds=30), min(res, timedelta(days=366)))
     except: return timedelta(hours=1)
 
-# --- КЛАВИАТУРА ХЕЛПА ---
+# --- МЕНЮ HELP С КНОПКАМИ ---
 def get_help_kb():
     buttons = [
         [InlineKeyboardButton(text="🎮 Развлечения", callback_query_data="help_fun"),
@@ -64,21 +67,34 @@ async def help_handler(message: Message):
 async def help_callback(call: CallbackQuery):
     section = call.data.split("_")[1]
     back_kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⬅️ Назад", callback_query_data="help_main")]])
-    
     texts = {
-        "fun": "🎮 **РАЗВЛЕЧЕНИЯ**\n\n🍺 `/beer` — пиво (5ч КД)\n🏆 `/beer_top` — топ",
-        "mod": "🛡 **МОДЕРАЦИЯ (ОТВЕТОМ)**\n\n🚫 `/mute [время] [причина]`\n⚠️ `/warn [причина]` — пред\n✅ `/unwarn` — снять пред\n💀 `/ban [время] [причина]` — бан (напр. `/ban 7d спам`)",
+        "fun": "🎮 **РАЗВЛЕЧЕНИЯ**\n\n🍺 `/beer` — выпить пива (КД 5ч)\n🏆 `/beer_top` — топ",
+        "mod": "🛡 **МОДЕРАЦИЯ**\n\n🚫 `/mute [время] [причина]`\n⚠️ `/warn [причина]` — пред\n✅ `/unwarn` — снять пред\n💀 `/ban [время/0] [причина]` (0 - навсегда)",
         "admin": "📢 **УПРАВЛЕНИЕ**\n\n🚩 `/army` — общий сбор (пин)",
-        "team": "🪖 **СТАРШИЙ СОСТАВ**\n\n👑 Лидер: **Никита**\n🎖 Замы: **Арлан**, **Ярик**\n💻 Тех: **Олег**"
+        "team": "🪖 **СТАРШИЙ СОСТАВ**\n\n👑 Лидер: **Никита**\n🎖 Замы: **Арлан, Ярик, Олег**"
     }
-    
     if section == "main":
         await call.message.edit_text("⚔️ **ЦЕНТРАЛЬНЫЙ ШТАБ IRON EMPIRE**", reply_markup=get_help_kb())
     else:
         await call.message.edit_text(texts.get(section, "Ошибка"), reply_markup=back_kb, parse_mode="Markdown")
     await call.answer()
 
-# --- МОДЕРАЦИЯ ---
+# --- КОМАНДЫ (БАН, МУТ, ВАРН) ---
+@dp.message(Command("ban"))
+async def ban_handler(message: Message, command: CommandObject):
+    if not is_admin(message.from_user.id) or not message.reply_to_message: return
+    args = command.args.split(maxsplit=1) if command.args else []
+    t_val = args[0] if len(args) > 0 else "0"
+    reason = args[1] if len(args) > 1 else "Не указана"
+    try:
+        if t_val == "0":
+            await bot.ban_chat_member(message.chat.id, message.reply_to_message.from_user.id)
+            await message.answer(f"💀 **БАН НАВСЕГДА**\n👤 {message.reply_to_message.from_user.first_name}\n📝 {reason}")
+        else:
+            until = datetime.now() + parse_time(t_val)
+            await bot.ban_chat_member(message.chat.id, message.reply_to_message.from_user.id, until_date=until)
+            await message.answer(f"💀 **БАН**\n👤 {message.reply_to_message.from_user.first_name}\n⏰ Срок: {t_val}\n📝 {reason}")
+    except Exception as e: await message.answer(f"❌ Ошибка: {e}")
 
 @dp.message(Command("mute"))
 async def mute_handler(message: Message, command: CommandObject):
@@ -89,71 +105,30 @@ async def mute_handler(message: Message, command: CommandObject):
     until = datetime.now() + parse_time(t_val)
     try:
         await bot.restrict_chat_member(message.chat.id, message.reply_to_message.from_user.id, ChatPermissions(can_send_messages=False), until_date=until)
-        await message.answer(f"🤐 **МУТ**\n👤 {message.reply_to_message.from_user.first_name}\n⏰ Срок: {t_val}\n📝 Причина: {reason}")
-    except: await message.answer("❌ Нет прав администратора!")
+        await message.answer(f"🤐 **МУТ**\n👤 {message.reply_to_message.from_user.first_name}\n⏰ Срок: {t_val}\n📝 {reason}")
+    except Exception as e: await message.answer(f"❌ Ошибка: {e}")
 
-@dp.message(Command("ban"))
-async def ban_handler(message: Message, command: CommandObject):
-    if not is_admin(message.from_user.id) or not message.reply_to_message: return
-    args = command.args.split(maxsplit=1) if command.args else []
-    t_val = args[0] if len(args) > 0 else "0" # 0 - навсегда
-    reason = args[1] if len(args) > 1 else "Не указана"
-    
-    if t_val == "0":
-        try:
-            await bot.ban_chat_member(message.chat.id, message.reply_to_message.from_user.id)
-            await message.answer(f"💀 **БАН НАВСЕГДА**\n👤 {message.reply_to_message.from_user.first_name}\n📝 Причина: {reason}")
-        except: pass
-    else:
-        until = datetime.now() + parse_time(t_val)
-        try:
-            await bot.ban_chat_member(message.chat.id, message.reply_to_message.from_user.id, until_date=until)
-            await message.answer(f"💀 **ВРЕМЕННЫЙ БАН**\n👤 {message.reply_to_message.from_user.first_name}\n⏰ Срок: {t_val}\n📝 Причина: {reason}")
-        except: pass
-
-@dp.message(Command("warn"))
-async def warn_handler(message: Message, command: CommandObject):
-    if not is_admin(message.from_user.id) or not message.reply_to_message: return
-    uid = message.reply_to_message.from_user.id
-    reason = command.args if command.args else "Не указана"
-    warns[uid] = warns.get(uid, 0) + 1
-    if warns[uid] >= 3:
-        await bot.ban_chat_member(message.chat.id, uid)
-        await message.answer(f"🔴 **БАН (3/3 варна)**\n👤 {message.reply_to_message.from_user.first_name}")
-        warns[uid] = 0
-    else:
-        await message.answer(f"⚠️ **ВАРН ({warns[uid]}/3)**\n👤 {message.reply_to_message.from_user.first_name}\n📝 Причина: {reason}")
-
-@dp.message(Command("unwarn"))
-async def unwarn_handler(message: Message):
-    if not is_admin(message.from_user.id) or not message.reply_to_message: return
-    uid = message.reply_to_message.from_user.id
-    warns[uid] = max(0, warns.get(uid, 0) - 1)
-    await message.answer(f"✅ **Варн снят!** Текущий счет: {warns[uid]}/3")
-
-# --- ПИВО / АРМИЯ / СБОР ID ---
-
+# --- ВСПОМОГАТЕЛЬНОЕ ---
 @dp.message(Command("beer"))
-async def beer_game(message: Message):
+async def beer_cmd(message: Message):
     uid = message.from_user.id
     now = datetime.now()
     if uid in beer_cooldown and (now - beer_cooldown[uid]) < timedelta(hours=5):
         return await message.answer("🚫 Жди 5 часов.")
-    liters = 5.0 if random.random() < 0.05 else round(random.uniform(0.5, 4.9), 1)
-    if uid not in beer_stats: beer_stats[uid] = {"name": message.from_user.first_name, "total": 0.0}
-    beer_stats[uid]["total"] = round(beer_stats[uid]["total"] + liters, 1)
+    liters = round(random.uniform(0.5, 5.0), 1)
+    beer_stats[uid] = beer_stats.get(uid, 0) + liters
     beer_cooldown[uid] = now
-    await message.answer(f"🍺 {message.from_user.first_name}: {liters} л. (Всего: {beer_stats[uid]['total']} л.)")
+    await message.answer(f"🍺 {message.from_user.first_name} выпил {liters} л. (Всего: {beer_stats[uid]} л.)")
 
 @dp.message(Command("army"))
 async def army_handler(message: Message):
     if not is_admin(message.from_user.id): return
     cid = message.chat.id
-    if cid not in chat_members or not chat_members[cid]: return
-    mentions = [f"[🎖](tg://user?id={u})" for u in list(chat_members[cid])[:50]]
-    msg = await message.answer(f"🚨 **СБОР IRON EMPIRE!**\n\n{' '.join(mentions)}", parse_mode="Markdown")
-    try: await bot.pin_chat_message(cid, msg.message_id)
-    except: pass
+    if cid in chat_members:
+        mentions = [f"[🎖](tg://user?id={u})" for u in list(chat_members[cid])[:50]]
+        msg = await message.answer(f"🚨 **ОБЩИЙ СБОР!**\n\n{' '.join(mentions)}", parse_mode="Markdown")
+        try: await bot.pin_chat_message(cid, msg.message_id)
+        except: pass
 
 @dp.message(F.chat.type.in_({"group", "supergroup"}), ~F.text.startswith('/'))
 async def collect_members(message: Message):
@@ -166,4 +141,7 @@ async def main():
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except Exception as e:
+        logger.error(f"Бот упал при запуске: {e}")
