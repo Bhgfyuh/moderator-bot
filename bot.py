@@ -1,19 +1,22 @@
 import os
 import asyncio
 import logging
+import random
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, ChatPermissions, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from aiogram.filters import Command, CommandObject
 from datetime import datetime, timedelta
 
+# Логи в консоль Railway
 logging.basicConfig(level=logging.INFO)
 
+# Токен
 TOKEN = os.getenv('BOT_TOKEN')
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# СПИСОК АДМИНОВ
+# --- КОНФИГУРАЦИЯ ---
 ADMIN_IDS = [5349346619, 5919988510, 5569374433]
 warns = {}
 chat_members = {}
@@ -34,16 +37,17 @@ def parse_time(time_str: str, min_s=1):
         return max(timedelta(seconds=min_s), min(res, timedelta(days=365)))
     except: return timedelta(hours=1)
 
-# КНОПКИ
+# --- КНОПКИ ---
 def get_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🛡 Модерация", callback_query_data="h_mod")],
         [InlineKeyboardButton(text="🪖 Старший Состав", callback_query_data="h_team")]
     ])
 
+# --- ОБРАБОТКА HELP ---
 @dp.message(Command("help"))
 async def help_cmd(message: Message):
-    await message.answer("⚔️ **ШТАБ IRON EMPIRE**\nВыберите раздел:", reply_markup=get_kb(), parse_mode="Markdown")
+    await message.reply("⚔️ **ШТАБ IRON EMPIRE**\nВыберите раздел:", reply_markup=get_kb(), parse_mode="Markdown")
 
 @dp.callback_query(F.data.startswith("h_"))
 async def help_cb(call: CallbackQuery):
@@ -56,7 +60,7 @@ async def help_cb(call: CallbackQuery):
             "🛡 **МОДЕРАЦИЯ (ОТВЕТОМ):**\n\n"
             "🚫 `/mute [время] [причина]` (30с-365д)\n"
             "🔊 `/unmute` — снять мут\n"
-            "⚠️ `/warn [причина]` — выдать пред\n"
+            "⚠️ `/warn [причина]` — пред\n"
             "✅ `/unwarn` — снять пред\n"
             "💀 `/ban [время] [причина]` (1с-365д)\n"
             "🔓 `/unban [ID]` — разбанить\n"
@@ -72,7 +76,7 @@ async def help_cb(call: CallbackQuery):
             "💻 **Олег** — Тех. Админ", reply_markup=back, parse_mode="Markdown")
     await call.answer()
 
-# МОДЕРАЦИЯ
+# --- МОДЕРАЦИЯ ---
 @dp.message(Command("mute"))
 async def mute_h(message: Message, command: CommandObject):
     if not is_admin(message.from_user.id) or not message.reply_to_message: return
@@ -98,8 +102,10 @@ async def ban_h(message: Message, command: CommandObject):
 @dp.message(Command("unmute"))
 async def unmute_h(message: Message):
     if not is_admin(message.from_user.id) or not message.reply_to_message: return
-    await bot.restrict_chat_member(message.chat.id, message.reply_to_message.from_user.id, ChatPermissions(can_send_messages=True, can_send_media_messages=True, can_send_other_messages=True, can_add_web_page_previews=True))
-    await message.answer("🔊 Мут снят!")
+    try:
+        await bot.restrict_chat_member(message.chat.id, message.reply_to_message.from_user.id, ChatPermissions(can_send_messages=True, can_send_media_messages=True, can_send_other_messages=True, can_add_web_page_previews=True))
+        await message.answer("🔊 Мут снят!")
+    except: pass
 
 @dp.message(Command("unban"))
 async def unban_h(message: Message, command: CommandObject):
@@ -142,6 +148,7 @@ async def collect(message: Message):
     chat_members[message.chat.id].add(message.from_user.id)
 
 async def main():
+    # Очистка очереди обновлений, чтобы бот не «лагал» от старых команд
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
