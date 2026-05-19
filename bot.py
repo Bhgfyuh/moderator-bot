@@ -13,7 +13,7 @@ TOKEN = os.getenv('BOT_TOKEN')
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# --- КОНФИГУРАЦИЯ ---
+# ТВОИ АДМИНЫ
 ADMIN_IDS = [5349346619, 5919988510, 5569374433]
 warns = {}
 chat_members = {}
@@ -34,7 +34,7 @@ def parse_time(time_str: str, min_s=1):
         return max(timedelta(seconds=min_s), min(res, timedelta(days=365)))
     except: return timedelta(hours=1)
 
-# --- МЕНЮ HELP ---
+# ГЛАВНОЕ МЕНЮ
 def get_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🛡 Модерация", callback_query_data="h_mod")],
@@ -49,18 +49,17 @@ async def help_cmd(message: Message):
 async def help_cb(call: CallbackQuery):
     s = call.data.split("_")[1]
     back = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⬅️ Назад", callback_query_data="h_main")]])
-    
     if s == "main":
         await call.message.edit_text("⚔️ **ШТАБ IRON EMPIRE**", reply_markup=get_kb())
     elif s == "mod":
         await call.message.edit_text(
             "🛡 **МОДЕРАЦИЯ (ОТВЕТОМ):**\n\n"
-            "🚫 `/mute [время] [причина]` (30с - 365д)\n"
+            "🚫 `/mute [время] [причина]` (30с-365д)\n"
             "🔊 `/unmute` — снять мут\n"
             "⚠️ `/warn [причина]` — выдать пред\n"
             "✅ `/unwarn` — снять пред\n"
-            "💀 `/ban [время] [причина]` (1с - 365д)\n"
-            "🔓 `/unban [ID]` — разбанить по ID\n"
+            "💀 `/ban [время] [причина]` (1с-365д)\n"
+            "🔓 `/unban [ID]` — разбанить\n"
             "🚩 `/army` — сбор состава", reply_markup=back, parse_mode="Markdown")
     elif s == "team":
         await call.message.edit_text(
@@ -73,7 +72,7 @@ async def help_cb(call: CallbackQuery):
             "💻 **Олег** — Тех. Админ", reply_markup=back, parse_mode="Markdown")
     await call.answer()
 
-# --- МОДЕРАЦИЯ ---
+# --- ФУНКЦИИ ---
 @dp.message(Command("mute"))
 async def mute_h(message: Message, command: CommandObject):
     if not is_admin(message.from_user.id) or not message.reply_to_message: return
@@ -105,8 +104,10 @@ async def unmute_h(message: Message):
 @dp.message(Command("unban"))
 async def unban_h(message: Message, command: CommandObject):
     if is_admin(message.from_user.id) and command.args:
-        await bot.unban_chat_member(message.chat.id, int(command.args), only_if_banned=True)
-        await message.answer(f"🔓 Пользователь {command.args} разбанен.")
+        try:
+            await bot.unban_chat_member(message.chat.id, int(command.args), only_if_banned=True)
+            await message.answer(f"🔓 ID {command.args} разбанен.")
+        except: pass
 
 @dp.message(Command("warn"))
 async def warn_h(message: Message, command: CommandObject):
@@ -115,7 +116,7 @@ async def warn_h(message: Message, command: CommandObject):
     warns[uid] = warns.get(uid, 0) + 1
     if warns[uid] >= 3:
         await bot.ban_chat_member(message.chat.id, uid)
-        await message.answer(f"🔴 **БАН (3/3 варна):** {message.reply_to_message.from_user.first_name}")
+        await message.answer(f"🔴 **БАН (3/3):** {message.reply_to_message.from_user.first_name}")
         warns[uid] = 0
     else:
         await message.answer(f"⚠️ **ВАРН ({warns[uid]}/3):** {message.reply_to_message.from_user.first_name}\n📝 **Причина:** {command.args or 'Не указана'}")
@@ -131,7 +132,7 @@ async def unwarn_h(message: Message):
 async def army_h(message: Message):
     if is_admin(message.from_user.id) and message.chat.id in chat_members:
         mentions = [f"[🎖](tg://user?id={u})" for u in list(chat_members[message.chat.id])[:50]]
-        msg = await message.answer(f"🚨 **ОБЩИЙ СБОР!**\n\n{' '.join(mentions)}", parse_mode="Markdown")
+        msg = await message.answer(f"🚨 **СБОР!**\n\n{' '.join(mentions)}", parse_mode="Markdown")
         try: await bot.pin_chat_message(message.chat.id, msg.message_id)
         except: pass
 
