@@ -6,6 +6,7 @@ from aiogram.types import Message, ChatPermissions
 from aiogram.filters import Command, CommandObject
 from datetime import datetime, timedelta
 
+# Настройка логов
 logging.basicConfig(level=logging.INFO)
 
 TOKEN = '8714415957:AAFEY7J5P-73GwtC9eBTOL9NgCaimwGcGrU'
@@ -18,103 +19,93 @@ OWNER_ID = 5349346619
 ADMIN_IDS = [5349346619, 5919988510, 5569374433]
 demoted_admins = set()
 warns = {}
+help_cooldown = {}
 chat_members = {}
-
-# Статистика и Кулдауны
-beer_stats = {} # {user_id: {"name": str, "total": float}}
-beer_cooldown = {} # {user_id: datetime}
+beer_stats = {}
+beer_cooldown = {}
 
 def is_admin(user_id):
     return user_id in ADMIN_IDS and user_id not in demoted_admins
 
+def parse_time(time_str: str):
+    if not time_str: return timedelta(hours=1)
+    unit = time_str[-1].lower()
+    try:
+        value = int(time_str[:-1])
+        if unit == 's': return timedelta(seconds=value)
+        if unit == 'm': return timedelta(minutes=value)
+        if unit == 'h': return timedelta(hours=value)
+        if unit == 'd': return timedelta(days=value)
+    except: return None
+    return None
+
+# Сборщик участников для /army
 @dp.message(F.chat.type.in_({"group", "supergroup"}), ~F.text.startswith('/'))
 async def collect_members(message: Message):
     cid = message.chat.id
     if cid not in chat_members: chat_members[cid] = set()
     chat_members[cid].add(message.from_user.id)
 
-# --- МИНИ-ИГРА: ПИВО С КД 5 ЧАСОВ ---
+# --- КРАСИВЫЙ ХЕЛП ---
+@dp.message(Command("help"))
+async def help_handler(message: Message):
+    uid = message.from_user.id
+    
+    # Анти-спам для обычных игроков
+    if not is_admin(uid):
+        now = datetime.now()
+        last = help_cooldown.get(uid)
+        if last and (now - last).total_seconds() < 300:
+            try:
+                await bot.restrict_chat_member(message.chat.id, uid, ChatPermissions(can_send_messages=False), until_date=now + timedelta(minutes=20))
+                return await message.answer("🤫 Не спамь командой /help. Отдохни в муте 20 минут.")
+            except: return
+        help_cooldown[uid] = now
+
+    help_text = (
+        "⚔️ **ЦЕНТРАЛЬНЫЙ ШТАБ УПРАВЛЕНИЯ** ⚔️\n"
+        "▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n\n"
+        "🎮 **РАЗВЛЕЧЕНИЯ:**\n"
+        "🍺 `/beer` — Опрокинуть бокал (КД 5ч)\n"
+        "🏆 `/beer_top` — Список главных пивоманов\n\n"
+        "🛡 **МОДЕРАЦИЯ (ОТВЕТОМ):**\n"
+        "🚫 `/mute [время] [причина]` — Заткнуть\n"
+        "🔊 `/unmute` — Вернуть голос\n"
+        "⚠️ `/warn [причина]` — Выдать пред (3/3 = ❌)\n"
+        "✅ `/unwarn` — Снять один пред\n"
+        "💀 `/ban [причина]` — Выгнать навсегда\n\n"
+        "📢 **ОБЩИЕ КОМАНДЫ:**\n"
+        "🚩 `/army [текст]` — Массовый сбор (пин)\n\n"
+        "👑 **ДЛЯ ЛИДЕРА:**\n"
+        "❌ `/demote` | ✅ `/promote` — Упр. админами\n\n"
+        "▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n"
+        "🪖 **СТАРШИЙ СОСТАВ:**\n"
+        "• 👑 Лидер: **Никита**\n"
+        "• 💻 Тех. Админ: **Олег**\n"
+        "• 🎖 Гл. Зам: **Арлан**\n"
+        "• 🥈 Зам: **Ярик**\n"
+        "▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬"
+    )
+    await message.answer(help_text, parse_mode="Markdown")
+
+# --- ПИВО ---
 @dp.message(Command("beer"))
 async def beer_game(message: Message):
     uid = message.from_user.id
-    user_name = message.from_user.first_name
     now = datetime.now()
-
-    # Проверка КД (5 часов)
-    if uid in beer_cooldown:
-        last_time = beer_cooldown[uid]
-        diff = now - last_time
-        if diff < timedelta(hours=5):
-            remaining = timedelta(hours=5) - diff
-            hours_rem = int(remaining.total_seconds() // 3600)
-            mins_rem = int((remaining.total_seconds() % 3600) // 60)
-            return await message.answer(
-                f"🚫 **Рано за добавкой!**\n"
-                f"Твой организм еще не переработал прошлую порцию.\n"
-                f"Заходи через: **{hours_rem}ч. {mins_rem}мин.**"
-            )
-
-    # Логика выпадения
-    if random.random() < 0.05:
-        liters = 5.0
-    else:
-        liters = round(random.uniform(0.5, 4.9), 1)
-
-    # Обновление статистики
-    if uid not in beer_stats:
-        beer_stats[uid] = {"name": user_name, "total": 0.0}
-    beer_stats[uid]["total"] = round(beer_stats[uid]["total"] + liters, 1)
-    beer_stats[uid]["name"] = user_name
+    if uid in beer_cooldown and (now - beer_cooldown[uid]) < timedelta(hours=5):
+        rem = timedelta(hours=5) - (now - beer_cooldown[uid])
+        return await message.answer(f"🚫 Рано! Жди еще **{int(rem.total_seconds()//3600)}ч. {int((rem.total_seconds()%3600)//60)}м.**")
     
-    # Устанавливаем новое время КД
+    liters = 5.0 if random.random() < 0.05 else round(random.uniform(0.5, 4.9), 1)
+    if uid not in beer_stats: beer_stats[uid] = {"name": message.from_user.first_name, "total": 0.0}
+    beer_stats[uid]["total"] = round(beer_stats[uid]["total"] + liters, 1)
     beer_cooldown[uid] = now
 
     if liters == 5.0:
         try:
-            until = now + timedelta(minutes=30)
-            await bot.restrict_chat_member(message.chat.id, uid, ChatPermissions(can_send_messages=False), until_date=until)
-            await message.answer(f"🍺 {user_name} жадно выпил **5.0 л.**!\n😵 Участник в хлам, он не может говорить 30 минут.")
-        except:
-            await message.answer(f"🍺 {user_name} выпил **5.0 л.**! (Мут не удался)")
+            await bot.restrict_chat_member(message.chat.id, uid, ChatPermissions(can_send_messages=False), until_date=now + timedelta(minutes=30))
+            await message.answer(f"🍺 **{message.from_user.first_name}** выпил 5.0 л. и вырубился на 30 мин!")
+        except: await message.answer(f"🍺 **{message.from_user.first_name}** выпил 5.0 л.!")
     else:
-        await message.answer(
-            f"🍺 {user_name}, держи свои **{liters} л.**\n"
-            f"📈 Всего в тебе: {beer_stats[uid]['total']} л.\n"
-            f"🕒 Следующая кружка через 5 часов."
-        )
-
-# --- ТОП ПИВОМАНОВ ---
-@dp.message(Command("beer_top"))
-async def beer_top(message: Message):
-    if not beer_stats:
-        return await message.answer("🍺 В баре пусто.")
-    sorted_top = sorted(beer_stats.values(), key=lambda x: x['total'], reverse=True)[:5]
-    text = "🏆 **ТОП-5 ПИВОМАНОВ** 🏆\n"
-    medals = ["🥇", "🥈", "🥉", "🍺", "🍺"]
-    for i, user in enumerate(sorted_top):
-        text += f"{medals[i]} **{user['name']}** — {user['total']} л.\n"
-    await message.answer(text, parse_mode="Markdown")
-
-# --- КОМАНДА /ARMY ---
-@dp.message(Command("army"))
-async def army_handler(message: Message, command: CommandObject):
-    if not is_admin(message.from_user.id): return
-    cid = message.chat.id
-    if cid not in chat_members or not chat_members[cid]:
-        return await message.answer("📝 База пуста.")
-    reason = command.args if command.args else "Срочный сбор!"
-    emojis = ["🎖","🪖","🔫","🛡"]
-    mentions = [f"[{emojis[i % 4]}](tg://user?id={uid})" for i, uid in enumerate(list(chat_members[cid])[:50])]
-    msg = await message.answer(f"🚨 **СБОР!**\nПриказ: {reason}\n\n{' '.join(mentions)}", parse_mode="Markdown")
-    try: await bot.pin_chat_message(cid, msg.message_id)
-    except: pass
-
-# --- ОСТАЛЬНЫЕ КОМАНДЫ (MUTE, WARN, HELP) ---
-# ... (Оставь как было в прошлом стабильном коде) ...
-
-async def main():
-    await bot.delete_webhook(drop_pending_updates=True)
-    await dp.start_polling(bot)
-
-if __name__ == "__main__":
-    asyncio.run(main())
+        await message.answer(f"🍺 **{message.from_user.first_name}**, твоя порция: {
