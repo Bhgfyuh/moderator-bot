@@ -7,16 +7,15 @@ from aiogram.types import Message, ChatPermissions, InlineKeyboardMarkup, Inline
 from aiogram.filters import Command, CommandObject
 from datetime import datetime, timedelta
 
-# Логирование для отслеживания ошибок
 logging.basicConfig(level=logging.INFO)
 
-# Берем токен из секретов Railway
+# Токен берем из переменных Railway
 TOKEN = os.getenv('BOT_TOKEN') 
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# --- БАЗА ДАННЫХ (в памяти) ---
+# --- ДАННЫЕ ---
 ADMIN_IDS = [5349346619, 5919988510, 5569374433]
 warns = {}
 chat_members = {}
@@ -37,12 +36,13 @@ def parse_time(time_str: str):
         elif unit == 'd': res = timedelta(days=value)
         else: res = timedelta(hours=1)
         
+        # Лимиты для Telegram (от 30 сек до 366 дней)
         if res < timedelta(seconds=30): return timedelta(seconds=30)
-        if res > timedelta(days=365): return timedelta(days=365)
+        if res > timedelta(days=366): return timedelta(days=366)
         return res
     except: return timedelta(hours=1)
 
-# --- КЛАВИАТУРЫ ---
+# --- КЛАВИАТУРА ХЕЛПА ---
 def get_help_kb():
     buttons = [
         [InlineKeyboardButton(text="🎮 Развлечения", callback_query_data="help_fun"),
@@ -52,15 +52,10 @@ def get_help_kb():
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
-# --- КОМАНДЫ ---
-
 @dp.message(Command("help"))
 async def help_handler(message: Message):
     await message.answer(
-        "⚔️ **ЦЕНТРАЛЬНЫЙ ШТАБ IRON EMPIRE**\n"
-        "▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n"
-        "Добро пожаловать в систему управления кланом.\n"
-        "Выбери нужный раздел ниже:",
+        "⚔️ **ЦЕНТРАЛЬНЫЙ ШТАБ IRON EMPIRE**\n\nВыбери раздел управления:",
         reply_markup=get_help_kb(),
         parse_mode="Markdown"
     )
@@ -71,14 +66,14 @@ async def help_callback(call: CallbackQuery):
     back_kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⬅️ Назад", callback_query_data="help_main")]])
     
     texts = {
-        "fun": "🎮 **РАЗВЛЕЧЕНИЯ**\n\n🍺 `/beer` — выпить пива (КД 5ч)\n🏆 `/beer_top` — рейтинг топ-алкашей",
-        "mod": "🛡 **МОДЕРАЦИЯ (ОТВЕТОМ)**\n\n🚫 `/mute [время] [причина]` (от 30с до 365д)\n🔊 `/unmute` — размут\n⚠️ `/warn [причина]` — пред (3/3=💀)\n✅ `/unwarn` — снять пред\n💀 `/ban [причина]` — бан навсегда",
-        "admin": "📢 **УПРАВЛЕНИЕ**\n\n🚩 `/army` — общий сбор клана (пин всех)",
+        "fun": "🎮 **РАЗВЛЕЧЕНИЯ**\n\n🍺 `/beer` — пиво (5ч КД)\n🏆 `/beer_top` — топ",
+        "mod": "🛡 **МОДЕРАЦИЯ (ОТВЕТОМ)**\n\n🚫 `/mute [время] [причина]`\n⚠️ `/warn [причина]` — пред\n✅ `/unwarn` — снять пред\n💀 `/ban [время] [причина]` — бан (напр. `/ban 7d спам`)",
+        "admin": "📢 **УПРАВЛЕНИЕ**\n\n🚩 `/army` — общий сбор (пин)",
         "team": "🪖 **СТАРШИЙ СОСТАВ**\n\n👑 Лидер: **Никита**\n🎖 Замы: **Арлан**, **Ярик**\n💻 Тех: **Олег**"
     }
     
     if section == "main":
-        await call.message.edit_text("⚔️ **ЦЕНТРАЛЬНЫЙ ШТАБ IRON EMPIRE**\n\nВыбери раздел:", reply_markup=get_help_kb())
+        await call.message.edit_text("⚔️ **ЦЕНТРАЛЬНЫЙ ШТАБ IRON EMPIRE**", reply_markup=get_help_kb())
     else:
         await call.message.edit_text(texts.get(section, "Ошибка"), reply_markup=back_kb, parse_mode="Markdown")
     await call.answer()
@@ -94,16 +89,27 @@ async def mute_handler(message: Message, command: CommandObject):
     until = datetime.now() + parse_time(t_val)
     try:
         await bot.restrict_chat_member(message.chat.id, message.reply_to_message.from_user.id, ChatPermissions(can_send_messages=False), until_date=until)
-        await message.answer(f"🤐 **Мут!**\n👤 {message.reply_to_message.from_user.first_name}\n⏰ Срок: {t_val}\n📝 Причина: {reason}")
-    except: await message.answer("❌ Нет прав администратора у бота!")
+        await message.answer(f"🤐 **МУТ**\n👤 {message.reply_to_message.from_user.first_name}\n⏰ Срок: {t_val}\n📝 Причина: {reason}")
+    except: await message.answer("❌ Нет прав администратора!")
 
-@dp.message(Command("unmute"))
-async def unmute_handler(message: Message):
+@dp.message(Command("ban"))
+async def ban_handler(message: Message, command: CommandObject):
     if not is_admin(message.from_user.id) or not message.reply_to_message: return
-    try:
-        await bot.restrict_chat_member(message.chat.id, message.reply_to_message.from_user.id, ChatPermissions(can_send_messages=True, can_send_media_messages=True, can_send_other_messages=True, can_add_web_page_previews=True))
-        await message.answer("🔊 Голос возвращен!")
-    except: pass
+    args = command.args.split(maxsplit=1) if command.args else []
+    t_val = args[0] if len(args) > 0 else "0" # 0 - навсегда
+    reason = args[1] if len(args) > 1 else "Не указана"
+    
+    if t_val == "0":
+        try:
+            await bot.ban_chat_member(message.chat.id, message.reply_to_message.from_user.id)
+            await message.answer(f"💀 **БАН НАВСЕГДА**\n👤 {message.reply_to_message.from_user.first_name}\n📝 Причина: {reason}")
+        except: pass
+    else:
+        until = datetime.now() + parse_time(t_val)
+        try:
+            await bot.ban_chat_member(message.chat.id, message.reply_to_message.from_user.id, until_date=until)
+            await message.answer(f"💀 **ВРЕМЕННЫЙ БАН**\n👤 {message.reply_to_message.from_user.first_name}\n⏰ Срок: {t_val}\n📝 Причина: {reason}")
+        except: pass
 
 @dp.message(Command("warn"))
 async def warn_handler(message: Message, command: CommandObject):
@@ -113,7 +119,7 @@ async def warn_handler(message: Message, command: CommandObject):
     warns[uid] = warns.get(uid, 0) + 1
     if warns[uid] >= 3:
         await bot.ban_chat_member(message.chat.id, uid)
-        await message.answer(f"🔴 **БАН (3/3 варна)!**\n👤 {message.reply_to_message.from_user.first_name}")
+        await message.answer(f"🔴 **БАН (3/3 варна)**\n👤 {message.reply_to_message.from_user.first_name}")
         warns[uid] = 0
     else:
         await message.answer(f"⚠️ **ВАРН ({warns[uid]}/3)**\n👤 {message.reply_to_message.from_user.first_name}\n📝 Причина: {reason}")
@@ -123,40 +129,21 @@ async def unwarn_handler(message: Message):
     if not is_admin(message.from_user.id) or not message.reply_to_message: return
     uid = message.reply_to_message.from_user.id
     warns[uid] = max(0, warns.get(uid, 0) - 1)
-    await message.answer(f"✅ **Варн снят!** Счет: {warns[uid]}/3")
+    await message.answer(f"✅ **Варн снят!** Текущий счет: {warns[uid]}/3")
 
-@dp.message(Command("ban"))
-async def ban_handler(message: Message, command: CommandObject):
-    if not is_admin(message.from_user.id) or not message.reply_to_message: return
-    reason = command.args if command.args else "Не указана"
-    try:
-        await bot.ban_chat_member(message.chat.id, message.reply_to_message.from_user.id)
-        await message.answer(f"💀 **БАН**\n👤 {message.reply_to_message.from_user.first_name}\n📝 Причина: {reason}")
-    except: pass
-
-# --- ПИВО ---
+# --- ПИВО / АРМИЯ / СБОР ID ---
 
 @dp.message(Command("beer"))
 async def beer_game(message: Message):
     uid = message.from_user.id
     now = datetime.now()
     if uid in beer_cooldown and (now - beer_cooldown[uid]) < timedelta(hours=5):
-        rem = timedelta(hours=5) - (now - beer_cooldown[uid])
-        return await message.answer(f"🚫 Рано! Жди еще {int(rem.total_seconds()//3600)}ч.")
+        return await message.answer("🚫 Жди 5 часов.")
     liters = 5.0 if random.random() < 0.05 else round(random.uniform(0.5, 4.9), 1)
     if uid not in beer_stats: beer_stats[uid] = {"name": message.from_user.first_name, "total": 0.0}
     beer_stats[uid]["total"] = round(beer_stats[uid]["total"] + liters, 1)
     beer_cooldown[uid] = now
     await message.answer(f"🍺 {message.from_user.first_name}: {liters} л. (Всего: {beer_stats[uid]['total']} л.)")
-
-@dp.message(Command("beer_top"))
-async def beer_top_cmd(message: Message):
-    if not beer_stats: return await message.answer("🍺 Пусто.")
-    top = sorted(beer_stats.values(), key=lambda x: x['total'], reverse=True)[:5]
-    res = "🏆 **ТОП ЛЮБИТЕЛЕЙ ПИВА:**\n" + "\n".join([f"• {u['name']}: {u['total']} л." for u in top])
-    await message.answer(res)
-
-# --- АРМИЯ ---
 
 @dp.message(Command("army"))
 async def army_handler(message: Message):
@@ -164,7 +151,7 @@ async def army_handler(message: Message):
     cid = message.chat.id
     if cid not in chat_members or not chat_members[cid]: return
     mentions = [f"[🎖](tg://user?id={u})" for u in list(chat_members[cid])[:50]]
-    msg = await message.answer(f"🚨 **ОБЩИЙ СБОР!**\n\n{' '.join(mentions)}", parse_mode="Markdown")
+    msg = await message.answer(f"🚨 **СБОР IRON EMPIRE!**\n\n{' '.join(mentions)}", parse_mode="Markdown")
     try: await bot.pin_chat_message(cid, msg.message_id)
     except: pass
 
