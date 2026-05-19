@@ -51,9 +51,11 @@ async def help_cmd(message: Message):
 async def mute_cmd(message: Message, command: CommandObject):
     if not is_admin(message.from_user.id) or not message.reply_to_message: return
     args = command.args.split(maxsplit=1) if command.args else ["1h", "Без причины"]
-    until = datetime.now() + parse_time(args[0], 30)
+    time_str = args[0]
+    reason = args[1] if len(args) > 1 else "Без причины"
+    until = datetime.now() + parse_time(time_str, 30)
     await bot.restrict_chat_member(message.chat.id, message.reply_to_message.from_user.id, ChatPermissions(can_send_messages=False), until_date=until)
-    await message.answer(f"🤐 Мут {message.reply_to_message.from_user.first_name} на {args[0]}.")
+    await message.answer(f"🤐 **Мут:** {message.reply_to_message.from_user.first_name}\n⏰ **Срок:** {time_str}\n📝 **Причина:** {reason}")
 
 @dp.message(Command("unmute"))
 async def unmute_cmd(message: Message):
@@ -65,19 +67,16 @@ async def unmute_cmd(message: Message):
 async def ban_cmd(message: Message, command: CommandObject):
     if not is_admin(message.from_user.id) or not message.reply_to_message: return
     args = command.args.split(maxsplit=1) if command.args else ["0", "Без причины"]
-    until = (datetime.now() + parse_time(args[0], 1)) if args[0] != "0" else None
+    time_str = args[0]
+    reason = args[1] if len(args) > 1 else "Без причины"
+    until = (datetime.now() + parse_time(time_str, 1)) if time_str != "0" else None
     await bot.ban_chat_member(message.chat.id, message.reply_to_message.from_user.id, until_date=until)
-    await message.answer(f"💀 Бан {message.reply_to_message.from_user.first_name}. Срок: {args[0] if args[0]!='0' else 'Навсегда'}")
+    await message.answer(f"💀 **Бан:** {message.reply_to_message.from_user.first_name}\n⏰ **Срок:** {time_str if time_str!='0' else 'Навсегда'}\n📝 **Причина:** {reason}")
 
 @dp.message(Command("unban"))
 async def unban_cmd(message: Message, command: CommandObject):
     if not is_admin(message.from_user.id): return
-    target_id = None
-    if message.reply_to_message:
-        target_id = message.reply_to_message.from_user.id
-    elif command.args and command.args.isdigit():
-        target_id = int(command.args)
-    
+    target_id = message.reply_to_message.from_user.id if message.reply_to_message else (int(command.args) if command.args and command.args.isdigit() else None)
     if target_id:
         try:
             await bot.unban_chat_member(message.chat.id, target_id, only_if_banned=True)
@@ -88,12 +87,13 @@ async def unban_cmd(message: Message, command: CommandObject):
 async def warn_cmd(message: Message, command: CommandObject):
     if not is_admin(message.from_user.id) or not message.reply_to_message: return
     uid = message.reply_to_message.from_user.id
+    reason = command.args if command.args else "Без причины"
     warns[uid] = warns.get(uid, 0) + 1
     if warns[uid] >= 3:
         await bot.ban_chat_member(message.chat.id, uid)
-        await message.answer(f"🔴 Бан (3/3 варна): {message.reply_to_message.from_user.first_name}")
+        await message.answer(f"🔴 **Бан (3/3 варна):** {message.reply_to_message.from_user.first_name}")
         warns[uid] = 0
-    else: await message.answer(f"⚠️ Варн {message.reply_to_message.from_user.first_name} ({warns[uid]}/3)")
+    else: await message.answer(f"⚠️ **Варн:** {message.reply_to_message.from_user.first_name} ({warns[uid]}/3)\n📝 **Причина:** {reason}")
 
 @dp.message(Command("unwarn"))
 async def unwarn_cmd(message: Message):
